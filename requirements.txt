@@ -1,0 +1,8 @@
+anthropic>=0.39.0
+httpx>=0.27.0
+yfinance>=0.2.40
+feedparser>=6.0.11
+pydantic>=2.7.0
+tenacity>=9.0.0
+python-dateutil>=2.9.0
+snscrape>=0.7.0.20230622
