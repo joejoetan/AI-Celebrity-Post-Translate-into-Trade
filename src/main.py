@@ -68,7 +68,12 @@ def main(argv: list[str] | None = None) -> int:
         state.save(st, cfg.state_dir)
         return 0
 
-    insights = analyst.analyze(client, new_posts)
+    try:
+        insights = analyst.analyze(client, new_posts)
+    except Exception as e:  # noqa: BLE001 — don't let one bad call lose state
+        log.exception("Analyst call failed: %s", e)
+        state.save(st, cfg.state_dir)
+        return 0
     insights = [i for i in insights if i.conviction >= MIN_CONVICTION and i.direction != "neutral"]
     log.info("Analyst produced %d actionable insights", len(insights))
     if not insights:
@@ -81,16 +86,24 @@ def main(argv: list[str] | None = None) -> int:
 
     # 5. Claude strategist: insights + snapshots → strategies.
     posts_by_id = {p.id: p for p in new_posts}
-    strategies = strategist.strategize(client, insights, posts_by_id, snapshots)
+    try:
+        strategies = strategist.strategize(client, insights, posts_by_id, snapshots)
+    except Exception as e:  # noqa: BLE001
+        log.exception("Strategist call failed: %s", e)
+        state.save(st, cfg.state_dir)
+        return 0
     log.info("Strategist produced %d strategies", len(strategies))
 
     # 6. Notify.
-    notifier.send(
-        cfg.telegram_bot_token,
-        cfg.telegram_chat_id,
-        strategies,
-        dry_run=cfg.dry_run,
-    )
+    try:
+        notifier.send(
+            cfg.telegram_bot_token,
+            cfg.telegram_chat_id,
+            strategies,
+            dry_run=cfg.dry_run,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.exception("Telegram send failed: %s", e)
 
     # 7. Influence bookkeeping for follow-through scoring.
     influence.queue_hits(st, strategies)

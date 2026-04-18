@@ -26,25 +26,43 @@ jobs:
       MIN_CONVICTION: "0.35"
       LOOKBACK_HOURS: "1"
       AUTO_PROMOTE: "false"
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout state branch
+      - name: Sanity-check secrets are set
+        run: |
+          missing=()
+          [ -z "${ANTHROPIC_API_KEY}" ] && missing+=(ANTHROPIC_API_KEY)
+          [ -z "${TELEGRAM_BOT_TOKEN}" ] && missing+=(TELEGRAM_BOT_TOKEN)
+          [ -z "${TELEGRAM_CHAT_ID}" ] && missing+=(TELEGRAM_CHAT_ID)
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "Add them at Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "All 3 secrets are configured."
+
+      - name: Checkout state branch (optional)
+        id: checkout_state
         uses: actions/checkout@v4
         with:
           ref: bot-state
           path: _state
-          # Don't fail on first run when the branch doesn't exist yet.
           fetch-depth: 1
         continue-on-error: true
 
-      - name: Seed state dir
+      - name: Seed state dir from bot-state branch
         run: |
           mkdir -p state
-          if [ -d _state/state ]; then
-            cp -r _state/state/* state/ 2>/dev/null || true
+          if [ -d _state/state ] && [ "$(ls -A _state/state 2>/dev/null)" ]; then
+            cp -r _state/state/* state/
+            echo "Seeded state from bot-state branch."
+          else
+            echo "No prior state — first run."
           fi
+          ls -la state/ || true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,31 +76,56 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run bot
-        run: python -m src.main
+        id: run_bot
+        run: python -m src.main --verbose
+        continue-on-error: true
 
-      - name: Commit state
+      - name: Show state dir after run
+        run: ls -la state/ || true
+
+      - name: Commit state to bot-state branch
+        if: always()
         run: |
           set -euo pipefail
+          if [ ! -d state ] || [ -z "$(ls -A state 2>/dev/null)" ]; then
+            echo "No state files to commit — skipping."
+            exit 0
+          fi
+
           if [ ! -d _state/.git ]; then
             # First run — initialize the orphan branch.
+            rm -rf _state
             git init _state
             cd _state
             git checkout --orphan bot-state
-            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           else
             cd _state
-            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
+
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            2>/dev/null || \
+            git remote add origin \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
           mkdir -p state
-          cp -r ../state/* state/
+          cp -r ../state/. state/
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state
           if git diff --cached --quiet; then
-            echo "No state changes."
+            echo "No state changes to commit."
           else
             git commit -m "state: update $(date -u +%FT%TZ)"
             git push origin HEAD:bot-state
+            echo "State pushed to bot-state."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail job if bot run failed
+        if: steps.run_bot.outcome == 'failure'
+        run: |
+          echo "::error::Bot run failed — see 'Run bot' step for traceback."
+          exit 1
