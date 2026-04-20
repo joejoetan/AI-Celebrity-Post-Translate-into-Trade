@@ -1,0 +1,43 @@
+name: diagnose
+
+on:
+  workflow_dispatch:
+    inputs:
+      since_hours:
+        description: "Lookback window in hours (default 6)"
+        default: "6"
+        required: true
+      no_llm:
+        description: "Skip Claude calls, show only raw scrape results"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_MODEL: claude-sonnet-4-6
+      PYTHONUNBUFFERED: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run diagnostic
+        run: |
+          ARGS=( --since-hours "${{ github.event.inputs.since_hours }}" --verbose )
+          if [ "${{ github.event.inputs.no_llm }}" = "true" ]; then
+            ARGS+=( --no-llm )
+          fi
+          python scripts/diagnose.py "${ARGS[@]}"

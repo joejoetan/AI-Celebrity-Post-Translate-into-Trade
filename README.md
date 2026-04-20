@@ -1,7 +1,7 @@
 # AI Celebrity-Post → Trade Signal Bot
 
-Every 5 minutes, scrape the latest posts from a set of high-influence public
-figures on X/Twitter and Truth Social, use Claude Opus 4.7 to translate them
+Every 10 minutes, scrape the latest posts from a set of high-influence public
+figures on X/Twitter and Truth Social, use Claude Sonnet 4.6 to translate them
 into structured trade insights, cross-check with live market data + news, and
 push decision-ready strategies to your Telegram.
 
@@ -23,14 +23,14 @@ by default).
 ## Architecture
 
 ```
-GH Actions (cron */5)
+GH Actions (cron */10)
     │
     ▼
  main.py ──► scraper/x_nitter.py   (Nitter RSS with rotation + snscrape fallback)
          ├► scraper/truth_social.py (public JSON API)
-         ├► analyst.py             (Claude Opus 4.7, prompt-cached)
+         ├► analyst.py             (Claude Sonnet 4.6, prompt-cached)
          ├► market.py              (yfinance + Yahoo RSS)
-         ├► strategist.py          (Claude Opus 4.7, prompt-cached)
+         ├► strategist.py          (Claude Sonnet 4.6, prompt-cached)
          ├► notifier.py            (Telegram Bot API)
          └► influence.py           (follow-through scoring, discovery)
 
@@ -53,7 +53,7 @@ No X API key needed — the bot uses public Nitter instances and falls back to
 ### 2. Enable the workflow
 
 Push to the main branch. The workflow (`.github/workflows/scrape.yml`) runs
-on `cron: */5 * * * *`. Trigger manually once via **Actions → scrape → Run
+on `cron: */10 * * * *`. Trigger manually once via **Actions → scrape → Run
 workflow** to verify Telegram delivery.
 
 ### 3. State branch
@@ -85,7 +85,7 @@ All tunable via env vars (see `.env.example` and `src/config.py`):
 
 | Var              | Default           | Purpose |
 |------------------|-------------------|---------|
-| `CLAUDE_MODEL`   | `claude-opus-4-7` | LLM for analyst + strategist |
+| `CLAUDE_MODEL`   | `claude-sonnet-4-6` | LLM for analyst + strategist |
 | `MIN_CONVICTION` | `0.3`             | Drop insights below this score |
 | `LOOKBACK_HOURS` | `2`               | How far back to scrape |
 | `AUTO_PROMOTE`   | `false`           | Auto-add discovered influencers |
@@ -130,8 +130,10 @@ Execution:
 - **yfinance is unofficial.** Treat snapshot data as indicative, not
   execution-grade quotes. For live trading, swap in a paid provider in
   `src/market.py`.
-- **LLM costs.** At typical post volume, Opus 4.7 with prompt caching runs
-  well under $10/day. Run the workflow's token usage log to tune.
+- **LLM costs.** Default model is Sonnet 4.6 — typical post volume runs
+  $1–$2/day ($30–60/month). Switch to `claude-opus-4-7` for higher
+  reasoning quality at ~5× the cost. Run the workflow's token usage log
+  to tune.
 - **This is not investment advice.** The bot produces structured
   suggestions from public posts. You are responsible for every trade
   decision and its consequences.

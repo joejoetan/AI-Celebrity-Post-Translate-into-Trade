@@ -2,8 +2,8 @@ name: scrape
 
 on:
   schedule:
-    # every 5 minutes (GitHub cron is best-effort — can be delayed under load)
-    - cron: "*/5 * * * *"
+    # every 10 minutes (GitHub cron is best-effort — can be delayed under load)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -21,18 +21,22 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      CLAUDE_MODEL: claude-opus-4-7
+      CLAUDE_MODEL: claude-sonnet-4-6
       STATE_DIR: state
       MIN_CONVICTION: "0.35"
       LOOKBACK_HOURS: "1"
       AUTO_PROMOTE: "false"
       PYTHONUNBUFFERED: "1"
+      # Opt in to Node.js 24 for actions/checkout, actions/setup-python, etc.
+      # Silences the "Node.js 20 deprecated" warning.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Sanity-check secrets are set
+      - name: "Stage 1/6: Sanity-check secrets"
         run: |
+          echo "::group::Checking required secrets"
           missing=()
           [ -z "${ANTHROPIC_API_KEY}" ] && missing+=(ANTHROPIC_API_KEY)
           [ -z "${TELEGRAM_BOT_TOKEN}" ] && missing+=(TELEGRAM_BOT_TOKEN)
@@ -43,89 +47,122 @@ jobs:
             exit 1
           fi
           echo "All 3 secrets are configured."
+          echo "::endgroup::"
 
-      - name: Checkout state branch (optional)
-        id: checkout_state
-        uses: actions/checkout@v4
-        with:
-          ref: bot-state
-          path: _state
-          fetch-depth: 1
-        continue-on-error: true
-
-      - name: Seed state dir from bot-state branch
+      - name: "Stage 2/6: Fetch prior state (if bot-state branch exists)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set +e
+          echo "::group::Attempting to clone bot-state branch"
+          git clone --branch bot-state --depth 1 --quiet \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            _state 2>&1
+          rc=$?
+          if [ $rc -eq 0 ]; then
+            echo "Pulled prior state."
+          else
+            echo "bot-state branch does not exist yet — this is fine for a first run."
+            rm -rf _state
+            mkdir -p _state
+          fi
+          echo "::endgroup::"
+
+      - name: "Stage 3/6: Seed working state dir"
+        run: |
+          echo "::group::Seeding state/"
           mkdir -p state
           if [ -d _state/state ] && [ "$(ls -A _state/state 2>/dev/null)" ]; then
-            cp -r _state/state/* state/
-            echo "Seeded state from bot-state branch."
+            cp -r _state/state/. state/
+            echo "Seeded from bot-state branch:"
           else
-            echo "No prior state — first run."
+            echo "No prior state — starting fresh."
           fi
           ls -la state/ || true
+          echo "::endgroup::"
 
-      - name: Set up Python
+      - name: "Stage 4/6: Install Python deps"
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
-      - name: Install deps
+      - name: Install requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run bot
+      - name: "Stage 5/6: Run bot"
         id: run_bot
-        run: python -m src.main --verbose
+        run: |
+          echo "::group::Bot run"
+          python -m src.main --verbose
+          echo "::endgroup::"
         continue-on-error: true
 
-      - name: Show state dir after run
-        run: ls -la state/ || true
-
-      - name: Commit state to bot-state branch
+      - name: "Stage 5.5: Show state after bot run"
         if: always()
         run: |
-          set -euo pipefail
+          echo "::group::state/ contents after bot run"
+          ls -la state/ || echo "state/ does not exist"
+          for f in state/*.json; do
+            [ -f "$f" ] || continue
+            echo "--- $f ---"
+            head -c 500 "$f"
+            echo
+          done
+          echo "::endgroup::"
+
+      - name: "Stage 6/6: Commit state to bot-state branch"
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          echo "::group::Committing state"
+
           if [ ! -d state ] || [ -z "$(ls -A state 2>/dev/null)" ]; then
-            echo "No state files to commit — skipping."
+            echo "No state files — skipping commit."
             exit 0
           fi
 
-          if [ ! -d _state/.git ]; then
-            # First run — initialize the orphan branch.
-            rm -rf _state
-            git init _state
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if [ -d _state/.git ]; then
+            echo "Using existing bot-state clone."
             cd _state
-            git checkout --orphan bot-state
+            git remote set-url origin "$REPO_URL"
           else
+            echo "Initializing new orphan bot-state branch."
+            rm -rf _state
+            git init -q _state
             cd _state
+            git checkout -q --orphan bot-state
+            git remote add origin "$REPO_URL"
           fi
 
-          git remote set-url origin \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            2>/dev/null || \
-            git remote add origin \
-              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           mkdir -p state
           cp -r ../state/. state/
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state
           if git diff --cached --quiet; then
-            echo "No state changes to commit."
-          else
-            git commit -m "state: update $(date -u +%FT%TZ)"
-            git push origin HEAD:bot-state
-            echo "State pushed to bot-state."
+            echo "No state changes."
+            exit 0
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          git commit -q -m "state: update $(date -u +%FT%TZ)"
+          if ! git push origin HEAD:bot-state; then
+            echo "::warning::Failed to push state. Check that 'Workflow permissions' is set to 'Read and write permissions' in Settings → Actions → General."
+          else
+            echo "State pushed."
+          fi
+          echo "::endgroup::"
 
       - name: Fail job if bot run failed
         if: steps.run_bot.outcome == 'failure'
         run: |
-          echo "::error::Bot run failed — see 'Run bot' step for traceback."
+          echo "::error::Bot run failed — expand the 'Stage 5/6: Run bot' step above for the Python traceback."
           exit 1

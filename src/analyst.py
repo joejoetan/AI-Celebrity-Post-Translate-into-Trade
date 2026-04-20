@@ -1,4 +1,4 @@
-"""Claude Opus 4.7 turns a batch of posts into structured TradeInsight objects.
+"""Claude (Sonnet 4.6 by default) turns a batch of posts into structured TradeInsight objects.
 
 Design notes:
 - One call per run (not per post). All new posts in a cycle are analyzed in a
@@ -65,6 +65,13 @@ Base rates to calibrate against:
 Be conservative: if the post is a joke, a retweet of someone else with no
 commentary, a personal update, or pure politics with no market nexus,
 return direction="neutral" and conviction < 0.3. Those will be filtered.
+
+HARD RULE — NO FABRICATION: Your rationale and risks must ONLY reference
+(a) exact content of the post, or (b) widely-known base-rate knowledge
+about the author (Musk moves TSLA, Ackman runs an activist fund, etc.).
+Do NOT invent specific prices, earnings dates, recent news, or company
+fundamentals. The strategist layer sees real market data; you do not.
+If you need a specific number, say "(pending snapshot verification)".
 
 Return your answer by calling the `submit_insights` tool exactly once with
 one entry per input post, in the same order."""

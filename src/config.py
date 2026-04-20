@@ -69,17 +69,26 @@ SEED_TARGETS: list[Target] = [
         display_name="Michael Saylor",
         domain_hint="BTC, MSTR, bitcoin equities",
     ),
+    Target(
+        handle="aleabitoreddit",
+        platform="x",
+        display_name="Serenity",
+        domain_hint="crypto, macro commentary, market sentiment",
+    ),
 ]
 
 
-# Nitter instances. Order doesn't matter — scraper randomizes. Update as needed.
+# Nitter / Nitter-alternative instances. Order doesn't matter — scraper
+# randomizes. Nitter churns heavily; check https://status.d420.de/ or
+# https://xcancel.com/ if scraping stops working and update this list.
 NITTER_INSTANCES: list[str] = [
-    "https://nitter.net",
+    "https://xcancel.com",              # Nitter fork, most stable in 2025+
+    "https://nitter.space",
+    "https://nitter.privacyredirect.com",
     "https://nitter.poast.org",
-    "https://nitter.privacydev.net",
     "https://nitter.tiekoetter.com",
-    "https://nitter.1d4.us",
-    "https://nitter.kavin.rocks",
+    "https://nitter.privacydev.net",
+    "https://nitter.net",
 ]
 
 
@@ -96,7 +105,7 @@ HIT_MOVE_PCT_SMALL: float = 4.0
 HIT_WINDOW_MIN: int = 60
 
 # LLM
-CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 LLM_MAX_TOKENS: int = 2000
 
 # HTTP

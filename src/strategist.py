@@ -1,8 +1,14 @@
-"""Claude Opus 4.7 fuses an insight + market snapshot into a TradeStrategy.
+"""Claude (Sonnet 4.6 by default) in financial-analyst mode: fuses an insight + verified
+market snapshot into a TradeStrategy with cited supporting facts and an
+immediate action plan.
 
-Same prompt-cached pattern as analyst.py. Run once per batch — the LLM sees
-all surviving insights (+ their market context) together so it can de-conflict
-overlapping ideas (e.g. two posts both hitting SPY).
+Key design choice: Claude is explicitly forbidden from fabricating any
+price, earnings number, company fact, or news item. Every supporting
+fact it produces must cite one of:
+  (a) the source post text,
+  (b) the provided market snapshot (yfinance quote / volume / earnings),
+  (c) a headline URL from the provided news feed.
+If data is missing, Claude must say so and cap conviction at 0.4.
 """
 from __future__ import annotations
 
@@ -13,34 +19,57 @@ from typing import Any
 from anthropic import Anthropic
 
 from src.config import CLAUDE_MODEL, LLM_MAX_TOKENS
-from src.models import MarketSnapshot, Post, TradeInsight, TradeStrategy
+from src.models import MarketSnapshot, Post, SupportingFact, TradeInsight, TradeStrategy
 
 log = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You are a portfolio manager turning analyst insights into
-decision-ready trade briefs. For each insight (with its current market
-snapshot), produce one strategy per tradeable ticker.
+SYSTEM_PROMPT = """You are operating as a buy-side financial analyst
+preparing decision-ready trade briefs for a portfolio manager who acts
+on them in real time.
 
-Design principles:
-- Be SPECIFIC. The user will read this on their phone and act. Give price
-  zones, not prose.
-- Size conservatively: 0.5%–3% of book for intraday reactions; up to 5%
-  for high-conviction swings. Never recommend >5%.
-- Always include a hard stop and a clear invalidation rule tied to the
-  post (e.g. "flat if author deletes/retracts").
-- Respect the snapshot: if spot is already up 5% on the news, the alpha
-  is gone — reduce size, widen entry, or mark as 'chase — skip'.
-- For crypto/24h markets set TIF accordingly.
-- If two insights point at the same ticker in the same direction, combine
-  them into one strategy and cite both. If they conflict, pick the higher-
-  conviction one and note the other as a risk.
-- If market data is missing (snapshot.note), acknowledge it and widen
-  margins / reduce size.
+=== HARD RULE: NO FABRICATION ===
 
-Output via the `submit_strategies` tool — one call, one entry per
-actionable ticker. Skip insights with direction='neutral' or where the
-market has already fully priced the move."""
+For each brief you must:
+ 1. Summarize the opportunity in plain English — what specifically is
+    the trade, why now, what's the thesis.
+ 2. Assemble supporting_facts[]. EVERY fact must cite exactly one source:
+       - "post"                    — the author's own words
+       - "quote: spot"             — price from the market snapshot
+       - "quote: day_pct"          — intraday change from the snapshot
+       - "quote: volume"           — volume data from the snapshot
+       - "quote: market_cap"       — market cap from the snapshot
+       - "quote: earnings"         — next_earnings from the snapshot
+       - "news: <outlet>"          — a headline we provided
+    You are FORBIDDEN from inventing prices, earnings dates, volumes,
+    company fundamentals, historical statistics, or news. If a fact is
+    not present in the post or snapshot, do NOT include it.
+ 3. If critical market data is missing (snapshot.note is set, or spot is
+    null, or news is empty), set data_limited=true, cap conviction at
+    0.4, and widen entry ranges.
+ 4. List risks[] — what invalidates the thesis.
+ 5. Emit a time-sequenced action_plan[]. Each step must include timing.
+    Example: "T+0–5min: place limit buy 1% @ 249.50", "At next open: add
+    1% on break of 251 with volume confirmation", "EOD: move stop to
+    break-even if T1 hit".
+ 6. Set trade mechanics: entry_zone, stop, targets, size_pct (never
+    exceed 5%), time_in_force, exit_rules, invalidation.
+
+=== SIZING DISCIPLINE ===
+
+- Intraday reactions to celebrity posts: 0.5–2% of book.
+- Swing trades with solid fundamental backing (from news/earnings):
+  up to 3%.
+- Position trades on activist stakes from named investors: up to 5%.
+- Any trade with data_limited=true: cap at 1%.
+
+=== OUTPUT ===
+
+Call `submit_strategies` exactly once with one entry per actionable
+ticker. Skip neutral insights and skip tickers where the move is already
+fully priced (news day_pct already exceeds your first target on typical
+volatility). If two insights point at the same ticker in the same
+direction, merge them and cite both posts in supporting_facts."""
 
 
 STRATEGY_TOOL: dict[str, Any] = {
@@ -59,10 +88,22 @@ STRATEGY_TOOL: dict[str, Any] = {
                             "type": "string",
                             "enum": ["long", "short", "neutral"],
                         },
-                        "conviction": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1,
+                        "conviction": {"type": "number", "minimum": 0, "maximum": 1},
+                        "opportunity_summary": {"type": "string"},
+                        "supporting_facts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "fact": {"type": "string"},
+                                    "source": {"type": "string"},
+                                },
+                                "required": ["fact", "source"],
+                            },
+                        },
+                        "risks": {
+                            "type": "array",
+                            "items": {"type": "string"},
                         },
                         "entry_zone": {"type": "string"},
                         "stop": {"type": "string"},
@@ -76,26 +117,35 @@ STRATEGY_TOOL: dict[str, Any] = {
                             "type": "array",
                             "items": {"type": "string"},
                         },
-                        "execution_steps": {
+                        "action_plan": {
                             "type": "array",
                             "items": {"type": "string"},
+                            "description": "Time-sequenced immediate steps with explicit timing prefixes (T+0-5min, At open, EOD, etc.).",
                         },
                         "invalidation": {"type": "string"},
                         "source_post_id": {"type": "string"},
+                        "data_limited": {
+                            "type": "boolean",
+                            "description": "True if critical market data was missing/stale.",
+                        },
                     },
                     "required": [
                         "ticker",
                         "side",
                         "conviction",
+                        "opportunity_summary",
+                        "supporting_facts",
+                        "risks",
                         "entry_zone",
                         "stop",
                         "targets",
                         "size_pct",
                         "time_in_force",
                         "exit_rules",
-                        "execution_steps",
+                        "action_plan",
                         "invalidation",
                         "source_post_id",
+                        "data_limited",
                     ],
                 },
             }
@@ -123,36 +173,25 @@ def strategize(
             }
             for i in insights
         ],
-        "market": {
-            t: s.model_dump() for t, s in snapshots.items()
-        },
+        "market": {t: s.model_dump() for t, s in snapshots.items()},
     }
 
     resp = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=LLM_MAX_TOKENS,
         system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
+            {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
         ],
         tools=[{**STRATEGY_TOOL, "cache_control": {"type": "ephemeral"}}],
         tool_choice={"type": "tool", "name": "submit_strategies"},
-        messages=[
-            {
-                "role": "user",
-                "content": json.dumps(payload, ensure_ascii=False),
-            }
-        ],
+        messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
     )
 
     _log_usage("strategist", resp)
     for block in resp.content:
         if block.type == "tool_use" and block.name == "submit_strategies":
-            raw = block.input.get("strategies", [])
-            return [_hydrate(item, posts_by_id, snapshots) for item in raw]
+            return [_hydrate(item, posts_by_id, snapshots)
+                    for item in block.input.get("strategies", [])]
 
     log.warning("Strategist returned no tool_use block")
     return []
@@ -164,12 +203,14 @@ def _hydrate(
     snapshots: dict[str, MarketSnapshot],
 ) -> TradeStrategy:
     post = posts_by_id.get(raw.get("source_post_id", ""))
+    supporting = [SupportingFact(**sf) for sf in raw.pop("supporting_facts", [])]
     return TradeStrategy(
-        **raw,
+        supporting_facts=supporting,
         source_author=post.author_handle if post else "",
         source_url=post.url if post else "",
         source_excerpt=_excerpt(post),
         market_snapshot=snapshots.get(raw["ticker"].upper()),
+        **raw,
     )
 
 
