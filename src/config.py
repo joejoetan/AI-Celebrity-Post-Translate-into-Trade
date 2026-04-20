@@ -69,6 +69,12 @@ SEED_TARGETS: list[Target] = [
         display_name="Michael Saylor",
         domain_hint="BTC, MSTR, bitcoin equities",
     ),
+    Target(
+        handle="aleabitoreddit",
+        platform="x",
+        display_name="Serenity",
+        domain_hint="crypto, macro commentary, market sentiment",
+    ),
 ]
 
 

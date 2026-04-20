@@ -15,7 +15,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import analyst, notifier, strategist  # noqa: E402
-from src.models import MarketSnapshot, Post  # noqa: E402
+from src.models import MarketSnapshot, NewsItem, Post  # noqa: E402
 
 
 # -- canned scenarios -------------------------------------------------------
@@ -35,8 +35,14 @@ SCENARIOS = [
             "TSLA": MarketSnapshot(
                 ticker="TSLA", spot=250.12, prev_close=248.00,
                 day_pct=0.85, five_day_pct=2.1,
-                headlines=["Tesla beats Q1 deliveries",
-                           "Analysts lift TSLA price targets"],
+                day_volume=95_000_000, avg_volume_10d=80_000_000,
+                next_earnings="2026-04-23",
+                news=[
+                    NewsItem(title="Tesla beats Q1 deliveries",
+                             source="yfinance", url="https://x"),
+                    NewsItem(title="Analysts lift TSLA price targets",
+                             source="google_news", url="https://x"),
+                ],
             ),
         },
         "insights": [{
@@ -48,16 +54,37 @@ SCENARIOS = [
         }],
         "strategies": [{
             "ticker": "TSLA", "side": "long", "conviction": 0.72,
+            "opportunity_summary": (
+                "Concrete production guidance from CEO with profitability "
+                "claim, into an earnings print in 5 days. Volume confirms. "
+                "Swing long with tight risk."
+            ),
+            "supporting_facts": [
+                {"fact": "Cybertruck production +40% QoQ, 20k units this quarter",
+                 "source": "post"},
+                {"fact": "Spot 250.12, +0.85% today", "source": "quote: spot"},
+                {"fact": "Day vol 95M (1.2x 10d avg)", "source": "quote: volume"},
+                {"fact": "Earnings 2026-04-23 (5d out)", "source": "quote: earnings"},
+                {"fact": "Tesla beats Q1 deliveries", "source": "news: yfinance"},
+            ],
+            "risks": [
+                "Musk historically misses delivery guidance by 1–2 quarters",
+                "Pre-earnings IV crush caps short-dated option plays",
+                "Headline-driven — reverses fast on a single bearish tweet",
+            ],
             "entry_zone": "249.00-251.00", "stop": "243.90 (-2.5%)",
             "targets": ["258 (+3.5%)", "265 (+6.3%)"],
             "size_pct": "2% of book", "time_in_force": "Day + 2",
             "exit_rules": ["Trail stop to entry at T1",
                            "Flat immediately if Musk deletes the post"],
-            "execution_steps": ["Limit buy 1% @ 249.50",
-                                "Add 1% on break of 251.00 w/ volume",
-                                "OCO: stop 243.90, TP 258/265"],
-            "invalidation": "Break 245 on >2x avg volume",
-            "source_post_id": "1776000000000000001",
+            "action_plan": [
+                "T+0–5min: Limit buy 1% @ 249.50",
+                "T+15min: If break 251 w/ >1.5x vol, add 1% @ 251.20",
+                "EOD: Move stop to break-even if T1 hit",
+                "2026-04-22 close: Trim to 0.5% before earnings unless conviction rises",
+            ],
+            "invalidation": "Break 245 on >2x avg volume OR Musk deletes post",
+            "source_post_id": "1776000000000000001", "data_limited": False,
         }],
     },
     {
