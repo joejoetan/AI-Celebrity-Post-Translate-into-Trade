@@ -1,0 +1,11 @@
+anthropic>=0.39.0
+httpx>=0.27.0
+yfinance>=0.2.40
+feedparser>=6.0.11
+pydantic>=2.7.0
+tenacity>=9.0.0
+python-dateutil>=2.9.0
+# snscrape is optional; the scraper imports it lazily and falls back to
+# Nitter-only if missing. It has a flaky transitive dep (sgmllib3k) that
+# fails to build on some CI images. Install it separately if you want the
+# fallback:  pip install snscrape
