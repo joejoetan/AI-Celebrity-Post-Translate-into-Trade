@@ -2,8 +2,8 @@ name: scrape
 
 on:
   schedule:
-    # every 5 minutes (GitHub cron is best-effort — can be delayed under load)
-    - cron: "*/5 * * * *"
+    # every 10 minutes (GitHub cron is best-effort — can be delayed under load)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:

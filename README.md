@@ -1,6 +1,6 @@
 # AI Celebrity-Post → Trade Signal Bot
 
-Every 5 minutes, scrape the latest posts from a set of high-influence public
+Every 10 minutes, scrape the latest posts from a set of high-influence public
 figures on X/Twitter and Truth Social, use Claude Opus 4.7 to translate them
 into structured trade insights, cross-check with live market data + news, and
 push decision-ready strategies to your Telegram.
@@ -23,7 +23,7 @@ by default).
 ## Architecture
 
 ```
-GH Actions (cron */5)
+GH Actions (cron */10)
     │
     ▼
  main.py ──► scraper/x_nitter.py   (Nitter RSS with rotation + snscrape fallback)
@@ -53,7 +53,7 @@ No X API key needed — the bot uses public Nitter instances and falls back to
 ### 2. Enable the workflow
 
 Push to the main branch. The workflow (`.github/workflows/scrape.yml`) runs
-on `cron: */5 * * * *`. Trigger manually once via **Actions → scrape → Run
+on `cron: */10 * * * *`. Trigger manually once via **Actions → scrape → Run
 workflow** to verify Telegram delivery.
 
 ### 3. State branch
