@@ -115,6 +115,16 @@ USER_AGENT: str = (
 )
 
 
+def rss_override(handle: str) -> str | None:
+    """User-provided direct RSS URL for a given handle, via env var.
+
+    Set RSS_URL_<HANDLE>=https://... in repo secrets to plug in any
+    external RSS feed (rss.app, FetchRSS, Feedly, etc.) for a specific
+    account. Takes precedence over syndication and Nitter.
+    """
+    return os.getenv(f"RSS_URL_{handle.upper()}")
+
+
 @dataclass
 class RuntimeConfig:
     anthropic_api_key: str

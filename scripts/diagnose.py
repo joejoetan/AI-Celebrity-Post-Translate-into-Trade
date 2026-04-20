@@ -54,37 +54,46 @@ def main() -> int:
     print(f"{BOLD}Diagnostic run — looking back {args.since_hours}h "
           f"(since {since:%Y-%m-%d %H:%M UTC}){RESET}\n")
 
-    # Step 1: scrape every target.
-    x_scraper = XScraper()
+    # Step 1: scrape every target, recording which path won.
     all_posts = []
-    scrape_results: dict[str, tuple[str, list]] = {}
+    scrape_results: dict[str, tuple[str, list, str]] = {}
 
     for tgt in SEED_TARGETS:
         key = f"{tgt.platform}:@{tgt.handle}"
+        path = ""
         try:
             if tgt.platform == "x":
+                x_scraper = XScraper()  # fresh instance so last_path is clean
                 posts = x_scraper.fetch(tgt.handle, since)
+                path = x_scraper.last_path or "none"
             elif tgt.platform == "truth_social" and tgt.platform_id:
                 posts = TruthSocialScraper(tgt.platform_id).fetch(tgt.handle, since)
+                path = "truth_social_api" if posts else "none"
             else:
                 posts = []
             if posts:
-                scrape_results[key] = ("ok", posts)
+                scrape_results[key] = ("ok", posts, path)
                 all_posts.extend(posts)
             else:
-                scrape_results[key] = ("empty", [])
+                scrape_results[key] = ("empty", [], path or "all fallbacks empty")
         except Exception as e:  # noqa: BLE001
-            scrape_results[key] = (f"error: {e.__class__.__name__}", [])
+            scrape_results[key] = (f"error: {e.__class__.__name__}", [], "")
 
-    # Step 2: report scrape stage.
+    # Step 2: report scrape stage with path info.
     print(f"{BOLD}── Stage 1: Scrape results ──{RESET}")
-    for key, (status, posts) in scrape_results.items():
+    print(f"  {'target':<42} {'result':<14} path")
+    print(f"  {'-'*42} {'-'*14} {'-'*40}")
+    for key, (status, posts, path) in scrape_results.items():
         if status == "ok":
-            print(f"  {GREEN}✓{RESET} {key:<45} {len(posts)} post(s)")
+            result = f"{GREEN}✓ {len(posts)} post(s){RESET}"
+            path_col = GREEN + path + RESET
         elif status == "empty":
-            print(f"  {GRAY}·{RESET} {key:<45} (no new posts)")
+            result = f"{GRAY}· empty       {RESET}"
+            path_col = GRAY + path + RESET
         else:
-            print(f"  {RED}✗{RESET} {key:<45} {RED}{status}{RESET}")
+            result = f"{RED}✗ fail       {RESET}"
+            path_col = RED + status + RESET
+        print(f"  {key:<42} {result} {path_col}")
 
     total_scraped = sum(len(p) for _, p in scrape_results.values())
     print(f"\n{BOLD}Scraped {total_scraped} post(s) total{RESET}\n")

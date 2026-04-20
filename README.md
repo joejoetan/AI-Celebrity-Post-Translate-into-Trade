@@ -119,6 +119,23 @@ Execution:
 🔗 https://x.com/elonmusk/status/...
 ```
 
+## When a specific account isn't being scraped
+
+The X scraper tries, in order: **per-target RSS override → X syndication
+endpoint → Nitter instances → snscrape**. If one handle consistently shows
+zero posts in `state/seen_posts.json`, all fallbacks are failing for it.
+
+**Fastest fix — use an RSS override:**
+
+1. Go to [rss.app](https://rss.app) (free tier works) or [FetchRSS](https://fetchrss.com).
+2. Create an RSS feed for the X account. Copy the feed URL.
+3. In your repo: Settings → Secrets → Actions → New secret.
+4. Name: `RSS_URL_<HANDLE>` (uppercase, e.g. `RSS_URL_ELONMUSK`).
+5. Value: the feed URL.
+
+The scraper will use that feed first and ignore Nitter/syndication entirely
+for that handle. Cost: free tier, or ~$10/mo for unlimited feeds.
+
 ## Caveats
 
 - **GitHub Actions cron is best-effort.** Under platform load, scheduled
