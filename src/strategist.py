@@ -1,4 +1,4 @@
-"""Claude Opus 4.7 in financial-analyst mode: fuses an insight + verified
+"""Claude (Sonnet 4.6 by default) in financial-analyst mode: fuses an insight + verified
 market snapshot into a TradeStrategy with cited supporting facts and an
 immediate action plan.
 

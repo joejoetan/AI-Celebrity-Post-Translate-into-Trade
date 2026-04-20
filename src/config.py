@@ -102,7 +102,7 @@ HIT_MOVE_PCT_SMALL: float = 4.0
 HIT_WINDOW_MIN: int = 60
 
 # LLM
-CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 LLM_MAX_TOKENS: int = 2000
 
 # HTTP

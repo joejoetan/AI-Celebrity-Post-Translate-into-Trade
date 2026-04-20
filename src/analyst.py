@@ -1,4 +1,4 @@
-"""Claude Opus 4.7 turns a batch of posts into structured TradeInsight objects.
+"""Claude (Sonnet 4.6 by default) turns a batch of posts into structured TradeInsight objects.
 
 Design notes:
 - One call per run (not per post). All new posts in a cycle are analyzed in a

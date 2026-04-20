@@ -21,7 +21,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      CLAUDE_MODEL: claude-opus-4-7
+      CLAUDE_MODEL: claude-sonnet-4-6
       STATE_DIR: state
       MIN_CONVICTION: "0.35"
       LOOKBACK_HOURS: "1"
