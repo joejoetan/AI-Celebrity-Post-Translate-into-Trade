@@ -78,14 +78,17 @@ SEED_TARGETS: list[Target] = [
 ]
 
 
-# Nitter instances. Order doesn't matter — scraper randomizes. Update as needed.
+# Nitter / Nitter-alternative instances. Order doesn't matter — scraper
+# randomizes. Nitter churns heavily; check https://status.d420.de/ or
+# https://xcancel.com/ if scraping stops working and update this list.
 NITTER_INSTANCES: list[str] = [
-    "https://nitter.net",
+    "https://xcancel.com",              # Nitter fork, most stable in 2025+
+    "https://nitter.space",
+    "https://nitter.privacyredirect.com",
     "https://nitter.poast.org",
-    "https://nitter.privacydev.net",
     "https://nitter.tiekoetter.com",
-    "https://nitter.1d4.us",
-    "https://nitter.kavin.rocks",
+    "https://nitter.privacydev.net",
+    "https://nitter.net",
 ]
 
 
