@@ -95,7 +95,7 @@ def main() -> int:
             path_col = RED + status + RESET
         print(f"  {key:<42} {result} {path_col}")
 
-    total_scraped = sum(len(p) for _, p in scrape_results.values())
+    total_scraped = sum(len(posts) for _, posts, _ in scrape_results.values())
     print(f"\n{BOLD}Scraped {total_scraped} post(s) total{RESET}\n")
 
     if not all_posts:
@@ -124,14 +124,24 @@ def main() -> int:
         return 0
 
     from anthropic import Anthropic
+    import os as _os
+    import traceback as _tb
+
+    model = _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+    print(f"{GRAY}Using model: {model}{RESET}")
     client = Anthropic()
 
     print(f"{BOLD}── Stage 3: Analyst verdict per post ──{RESET}")
     try:
         insights = analyst.analyze(client, all_posts)
     except Exception as e:
-        print(f"  {RED}Analyst failed: {e}{RESET}")
-        return 1
+        print(f"  {RED}Analyst failed: {e.__class__.__name__}: {e}{RESET}")
+        _tb.print_exc()
+        print(f"\n{YELLOW}Common causes:{RESET}")
+        print(f"  • Invalid model ID. Check CLAUDE_MODEL env var (currently '{model}').")
+        print(f"  • Billing not set up at console.anthropic.com.")
+        print(f"  • API key doesn't have access to this model.")
+        return 0  # keep exit code clean so the rest of diagnose output is visible
 
     insights_by_post = {i.post_id: i for i in insights}
     passed_insights = []
@@ -168,8 +178,10 @@ def main() -> int:
     try:
         strategies = strategist.strategize(client, passed_insights, posts_by_id, snapshots)
     except Exception as e:
-        print(f"  {RED}Strategist failed: {e}{RESET}")
-        return 1
+        print(f"  {RED}Strategist failed: {e.__class__.__name__}: {e}{RESET}")
+        import traceback as _tb
+        _tb.print_exc()
+        return 0
 
     for s in strategies:
         print(f"  {GREEN}✅ {s.ticker} {s.side.upper()}{RESET} "
