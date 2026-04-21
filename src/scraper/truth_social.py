@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 from dateutil import parser as dateparser
 
-from src.config import HTTP_TIMEOUT_S, USER_AGENT
+from src.config import HTTP_TIMEOUT_S
 from src.models import Post
 from src.scraper.base import Scraper
 
@@ -24,6 +24,12 @@ log = logging.getLogger(__name__)
 
 _API = "https://truthsocial.com/api/v1/accounts/{id}/statuses"
 _TAG_RE = re.compile(r"<[^>]+>")
+
+# Truth Social rejects non-browser UAs with 403. Mimic a recent Chrome.
+_BROWSER_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
 
 
 class TruthSocialScraper(Scraper):
@@ -39,7 +45,13 @@ class TruthSocialScraper(Scraper):
                 url,
                 params={"exclude_replies": "true", "limit": 40},
                 timeout=HTTP_TIMEOUT_S,
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                headers={
+                    "User-Agent": _BROWSER_UA,
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://truthsocial.com/",
+                    "Origin": "https://truthsocial.com",
+                },
                 follow_redirects=True,
             )
             r.raise_for_status()

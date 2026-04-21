@@ -145,29 +145,46 @@ def main() -> int:
 
     insights_by_post = {i.post_id: i for i in insights}
     passed_insights = []
+    counts = {"passed": 0, "neutral": 0, "low_conv": 0, "missing": 0}
     for p in all_posts:
         i = insights_by_post.get(p.id)
         if i is None:
             verdict = f"{RED}✗ analyst did not return a verdict{RESET}"
+            counts["missing"] += 1
         elif i.direction == "neutral":
-            verdict = f"{YELLOW}🟡 FILTERED — neutral (conv {i.conviction:.2f}): {i.rationale[:60]}{RESET}"
+            verdict = (f"{YELLOW}🟡 FILTERED — NEUTRAL (conv {i.conviction:.2f}):"
+                       f" {i.rationale[:80]}{RESET}")
+            counts["neutral"] += 1
         elif i.conviction < MIN_CONVICTION:
-            verdict = (f"{YELLOW}🟡 FILTERED — low conviction "
-                       f"{i.conviction:.2f} < {MIN_CONVICTION} ({i.direction}): "
-                       f"{i.rationale[:50]}{RESET}")
+            verdict = (f"{YELLOW}🟡 FILTERED — LOW CONVICTION "
+                       f"{i.conviction:.2f} < {MIN_CONVICTION} ({i.direction} "
+                       f"{i.tickers}): {i.rationale[:60]}{RESET}")
+            counts["low_conv"] += 1
         else:
-            verdict = (f"{GREEN}✅ PASSED — {i.direction} conv {i.conviction:.2f} "
-                       f"{i.tickers}{RESET}")
+            verdict = (f"{GREEN}✅ PASSED — {i.direction.upper()} conv "
+                       f"{i.conviction:.2f} {i.tickers}{RESET}")
             passed_insights.append(i)
-        excerpt = p.text.replace("\n", " ")[:60]
+            counts["passed"] += 1
+        excerpt = p.text.replace("\n", " ")[:80]
         print(f"  @{p.author_handle}: {excerpt}")
         print(f"    → {verdict}\n")
 
+    print(f"{BOLD}Analyst breakdown:{RESET} "
+          f"{GREEN}{counts['passed']} passed{RESET}, "
+          f"{YELLOW}{counts['neutral']} neutral{RESET}, "
+          f"{YELLOW}{counts['low_conv']} low-conviction{RESET}, "
+          f"{RED}{counts['missing']} missing verdict{RESET}")
+
     if not passed_insights:
-        print(f"{YELLOW}No insights passed the conviction filter — no Telegram "
-              f"messages would have been sent.{RESET}")
-        print("  • Lower MIN_CONVICTION env var to be more permissive.")
-        print("  • Or accept that the posts were genuinely not market-moving.")
+        print(f"\n{YELLOW}══ No insights passed the conviction filter ══{RESET}")
+        print(f"  That's why you're not seeing Telegram messages — the "
+              f"analyst judged every post as either pure noise (neutral) or "
+              f"not confident enough (< {MIN_CONVICTION}).")
+        print(f"\n  To see MORE messages:")
+        print(f"    • Edit .github/workflows/scrape.yml → set "
+              f"MIN_CONVICTION: \"0.25\" (or even \"0.15\" for maximum volume)")
+        print(f"    • Or accept that these specific posts genuinely weren't")
+        print(f"      market-moving (retweets, personal posts, etc.)")
         return 0
 
     # Step 5: strategist (real Claude call).
